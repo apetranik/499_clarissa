@@ -320,8 +320,8 @@ Status ServerForCommandLineClient::stream(
   }
 
   std::set<std::string> chirpsent; /* Save all the id of chirps was sent */
-  chirp::Chirp chirp;
-  chirp.ParseFromString(from_get_function[0]);
+  chirp::Hashtag hashtag;
+  hashtag.ParseFromString(from_get_function[0]);
 
   chirp::StreamReply reply;
   /*
@@ -329,10 +329,25 @@ Status ServerForCommandLineClient::stream(
     sent chirps in a set called chirpsent to disallow sending duplicates. Keep
     looking for new chirps with this while loop.
   */
-  // TODO: Implement continous polling for new chirps from #hashtag
   while (true) {
     if (context->IsCancelled()) {
+      break;
     }
+    auto from_get_function = client_key.get("hashtag#" + request->hashtag());
+    if (from_get_function.size() == 0) {
+      break;
+    }
+
+    // Go thru all chirps under hashtag and check if they are new
+    hashtag.ParseFromString(from_get_function[0]);
+    for (int j = 0; j < hashtag.chirps_size(); j++) {
+      if (hashtag.chirps(j).timestamp().useconds() > microseconds_since_epoch) {
+        chirp::Chirp *message = reply.add_chirps();
+        CopyChirp(message, hashtag.chirps(j));
+      }
+    }
+    writer->Write(reply);
+    reply.clear_chirps();
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   }
   return Status::OK;
@@ -433,9 +448,9 @@ void ServerForCommandLineClient::HandleChirpHashTag(
     }
 
     // Add chirp to Hashtag
-    chirp::Chirp *new_message;
     std::string hashtag_chirp;
     {
+      chirp::Chirp *new_message;
       new_message = tag.add_chirps();
       new_message->set_username(username);
       new_message->set_text(text);
@@ -446,6 +461,8 @@ void ServerForCommandLineClient::HandleChirpHashTag(
       new_message->set_parent_id(parent_id);
       new_message->SerializeToString(&hashtag_chirp);
     }
-    client_key.put("hashtag" + hashtag, hashtag_chirp);
+    std::string new_hashtag_chirp;
+    tag.SerializeToString(&new_hashtag_chirp);
+    client_key.put("hashtag" + hashtag, new_hashtag_chirp);
   }
 }
