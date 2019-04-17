@@ -173,5 +173,15 @@ class ServerForCommandLineClient final : public ServiceLayer::Service {
   */
   void SortReadChirpByTimestamp(std::vector<Chirp> &chirp_to_send,
                                 ReadReply *response, chirp::Chirp *main_chirp);
+
+  /*
+    Helper function for chirp() to handle potential hashtags in a chirp and add
+    them to the KVS
+  */
+  void HandleChirpHashTag(const std::string &username, const std::string &text,
+                          const std::string &parent_id,
+                          const std::string &next_chirp_ID, std::time_t seconds,
+                          int64_t microseconds_since_epoch,
+                          ClientForKeyValueStore &client_key);
 };
 #endif /* SERVICE_SERVICE_LAYER_FUNCTIONALITIES_H_ */

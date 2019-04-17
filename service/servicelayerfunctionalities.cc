@@ -163,39 +163,10 @@ Status ServerForCommandLineClient::chirp(ServerContext *context,
     client_key.put("reply" + request->parent_id(), reply_chirp_to_proto);
   }
 
-  /* Check for hashtag in chirp - if so add to KVS as a hashtag chirp */
-  std::size_t start = request->text().find(" #");
-  if (start != -1) {
-    std::string hashtag =
-        request->text().substr(start + 1);  // +1 gets rid of space
-    std::size_t end = hashtag.find(" ");    // cut off at end of hashtag
-    hashtag = hashtag.substr(0, end);
-
-    chirp::Hashtag tag;
-    std::vector<std::string> from_get_function =
-        client_key.get("hashtag" + hashtag);
-    if (from_get_function.size() != 0) {
-      LOG(INFO) << "Hashtag has been used before" << std::endl;
-      std::string getValue = from_get_function[0];
-      tag.ParseFromString(getValue);
-    }
-
-    // Add chirp to Hashtag
-    chirp::Chirp *new_message;
-    std::string hashtag_chirp;
-    {
-      new_message = tag.add_chirps();
-      new_message->set_username(request->username());
-      new_message->set_text(request->text());
-      new_message->set_id(next_chirp_ID);
-      chirp::Timestamp *timestamp = new_message->mutable_timestamp();
-      timestamp->set_seconds(static_cast<int64_t>(seconds));
-      timestamp->set_useconds(microseconds_since_epoch);
-      new_message->set_parent_id(request->parent_id());
-      new_message->SerializeToString(&hashtag_chirp);
-    }
-    client_key.put("hashtag" + hashtag, hashtag_chirp);
-  }
+  /* Check and handle hashtags */
+  HandleChirpHashTag(request->username(), request->text(), request->parent_id(),
+                     next_chirp_ID, seconds, microseconds_since_epoch,
+                     client_key);
   return Status::OK;
 }
 Status ServerForCommandLineClient::read(ServerContext *context,
@@ -438,4 +409,43 @@ bool ServerForCommandLineClient::CheckIfReplyIDExist(
     }
   }
   return true;
+}
+
+void ServerForCommandLineClient::HandleChirpHashTag(
+    const std::string &username, const std::string &text,
+    const std::string &parent_id, const std::string &next_chirp_ID,
+    std::time_t seconds, int64_t microseconds_since_epoch,
+    ClientForKeyValueStore &client_key) {
+  /* Check for hashtag in chirp - if so add to KVS as a hashtag chirp */
+  std::size_t start = text.find(" #");
+  if (start != -1) {
+    std::string hashtag = text.substr(start + 1); /* +1 gets rid of space */
+    std::size_t end = hashtag.find(" "); /* cut off at end of hashtag */
+    hashtag = hashtag.substr(0, end);
+
+    chirp::Hashtag tag;
+    std::vector<std::string> from_get_function =
+        client_key.get("hashtag" + hashtag);
+    if (from_get_function.size() != 0) {
+      LOG(INFO) << "Hashtag has been used before" << std::endl;
+      std::string getValue = from_get_function[0];
+      tag.ParseFromString(getValue);
+    }
+
+    // Add chirp to Hashtag
+    chirp::Chirp *new_message;
+    std::string hashtag_chirp;
+    {
+      new_message = tag.add_chirps();
+      new_message->set_username(username);
+      new_message->set_text(text);
+      new_message->set_id(next_chirp_ID);
+      chirp::Timestamp *timestamp = new_message->mutable_timestamp();
+      timestamp->set_seconds(static_cast<int64_t>(seconds));
+      timestamp->set_useconds(microseconds_since_epoch);
+      new_message->set_parent_id(parent_id);
+      new_message->SerializeToString(&hashtag_chirp);
+    }
+    client_key.put("hashtag" + hashtag, hashtag_chirp);
+  }
 }
