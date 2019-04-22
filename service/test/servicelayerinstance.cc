@@ -229,9 +229,45 @@ std::vector<chirp::Chirp> ServiceLayerInstance::Monitor(
 }
 std::vector<chirp::Chirp> ServiceLayerInstance::Stream(
     const std::string &hashtag) {
+  /* Get Current TimeStamp */
+  std::time_t seconds;
+  int64_t microseconds_since_epoch;
+  SetTimeStamp(seconds, microseconds_since_epoch);
+
+  auto matching_hashtags = kvstore->Get("hashtag#" + hashtag);
+  std::vector<chirp::Chirp> chirps_to_send;
+
+  if (matching_hashtags.size() == 0) {
+    return chirps_to_send;
+  }
+
+  std::set<std::string> chirpsent; /* Save all the id of chirps was sent */
+  chirp::Hashtag tag;
+  tag.ParseFromString(matching_hashtags[0]);
+
   chirp::StreamReply reply;
 
-  std::set<std::string> chirpsent;
+  /*
+    Continuously look through in db for #hashtag. Keep all
+    sent chirps in a set called chirpsent to disallow sending duplicates. Keep
+    looking for new chirps with this while loop.
+  */
+  int k = 0;
+  while (k < 10) {
+    auto matching_hashtags = kvstore->Get("hashtag#" + hashtag);
+    if (matching_hashtags.size() == 0) {
+      break;
+    }
+    // Go thru all chirps under hashtag and check if they are new
+    tag.ParseFromString(matching_hashtags[0]);
+    for (int j = 0; j < tag.chirps_size(); j++) {
+      if (tag.chirps(j).timestamp().useconds() > microseconds_since_epoch) {
+        chirps_to_send.push_back(tag.chirps(j));
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  }
+  return chirps_to_send;
 }
 
 void ServiceLayerInstance::CopyChirp(chirp::Chirp *chirp_,
@@ -319,34 +355,45 @@ void ServiceLayerInstance::HandleChirpHashTag(
     const std::string &parent_id, const std::string &next_chirp_ID,
     std::time_t seconds, int64_t microseconds_since_epoch) {
   /* Check for hashtag in chirp - if so add to KVS as a hashtag chirp */
+  chirp::Hashtag tag;
+  std::size_t start = text.find(" #");
+  std::string hashtag = ParseChirpForHashtag(text, &tag);
+  if (hashtag.empty()) return;
+
+  // Add chirp to Hashtag
+  std::string hashtag_chirp;
+  chirp::Chirp *new_message;
+  new_message = tag.add_chirps();
+  new_message->set_username(username);
+  new_message->set_text(text);
+  new_message->set_id(next_chirp_ID);
+  chirp::Timestamp *timestamp = new_message->mutable_timestamp();
+  timestamp->set_seconds(static_cast<int64_t>(seconds));
+  timestamp->set_useconds(microseconds_since_epoch);
+  new_message->set_parent_id(parent_id);
+  new_message->SerializeToString(&hashtag_chirp);
+
+  std::string new_hashtag_chirp;
+  tag.SerializeToString(&new_hashtag_chirp);
+
+  kvstore->Put("hashtag" + hashtag, new_hashtag_chirp);
+}
+
+std::string ServiceLayerInstance::ParseChirpForHashtag(const std::string &text,
+                                                       chirp::Hashtag *tag) {
+  std::string hashtag = "";
   std::size_t start = text.find(" #");
   if (start != -1) {
-    std::string hashtag = text.substr(start + 1); /* +1 gets rid of space */
+    hashtag = text.substr(start + 1);    /* +1 gets rid of space */
     std::size_t end = hashtag.find(" "); /* cut off at end of hashtag */
     hashtag = hashtag.substr(0, end);
 
-    chirp::Hashtag tag;
-    std::vector<std::string> from_get_function =
+    std::vector<std::string> matching_hashtags =
         kvstore->Get("hashtag" + hashtag);
-    if (from_get_function.size() != 0) {
-      std::string getValue = from_get_function[0];
-      tag.ParseFromString(getValue);
+    if (matching_hashtags.size() != 0) {
+      std::string getValue = matching_hashtags[0];
+      tag->ParseFromString(getValue);
     }
-
-    // Add chirp to Hashtag
-    chirp::Chirp *new_message;
-    std::string hashtag_chirp;
-    {
-      new_message = tag.add_chirps();
-      new_message->set_username(username);
-      new_message->set_text(text);
-      new_message->set_id(next_chirp_ID);
-      chirp::Timestamp *timestamp = new_message->mutable_timestamp();
-      timestamp->set_seconds(static_cast<int64_t>(seconds));
-      timestamp->set_useconds(microseconds_since_epoch);
-      new_message->set_parent_id(parent_id);
-      new_message->SerializeToString(&hashtag_chirp);
-    }
-    kvstore->Put("hashtag" + hashtag, hashtag_chirp);
   }
+  return hashtag;
 }

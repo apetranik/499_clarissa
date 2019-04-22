@@ -94,5 +94,9 @@ class ServiceLayerInstance {
                           const std::string &parent_id,
                           const std::string &next_chirp_ID, std::time_t seconds,
                           int64_t microseconds_since_epoch);
+  /* Finds and parses hashtags from the text of a chirp. returns true if there
+   * is a chirp and fills the Hashtag proto */
+  std::string ParseChirpForHashtag(const std::string &text,
+                                   chirp::Hashtag *tag);
 };
 #endif /* SERVICE_TEST_SERVICELAYERINSTANCE_H*/
