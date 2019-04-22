@@ -314,14 +314,14 @@ Status ServerForCommandLineClient::stream(
   ClientForKeyValueStore client_key(grpc::CreateChannel(
       "localhost:50000", grpc::InsecureChannelCredentials()));
 
-  auto from_get_function = client_key.get("hashtag#" + request->hashtag());
-  if (from_get_function.size() == 0) {
+  auto matching_hashtags = client_key.get("hashtag#" + request->hashtag());
+  if (matching_hashtags.size() == 0) {
     return Status::CANCELLED;
   }
 
   std::set<std::string> chirpsent; /* Save all the id of chirps was sent */
   chirp::Hashtag hashtag;
-  hashtag.ParseFromString(from_get_function[0]);
+  hashtag.ParseFromString(matching_hashtags[0]);
 
   chirp::StreamReply reply;
   /*
@@ -333,13 +333,13 @@ Status ServerForCommandLineClient::stream(
     if (context->IsCancelled()) {
       break;
     }
-    auto from_get_function = client_key.get("hashtag#" + request->hashtag());
-    if (from_get_function.size() == 0) {
+    auto matching_hashtags = client_key.get("hashtag#" + request->hashtag());
+    if (matching_hashtags.size() == 0) {
       break;
     }
 
     // Go thru all chirps under hashtag and check if they are new
-    hashtag.ParseFromString(from_get_function[0]);
+    hashtag.ParseFromString(matching_hashtags[0]);
     for (int j = 0; j < hashtag.chirps_size(); j++) {
       if (hashtag.chirps(j).timestamp().useconds() > microseconds_since_epoch) {
         chirp::Chirp *message = reply.add_chirps();
@@ -464,11 +464,11 @@ std::string ServerForCommandLineClient::ParseChirpForHashtag(
     std::size_t end = hashtag.find(" "); /* cut off at end of hashtag */
     hashtag = hashtag.substr(0, end);
 
-    std::vector<std::string> from_get_function =
+    std::vector<std::string> matching_hashtags =
         client_key.get("hashtag" + hashtag);
-    if (from_get_function.size() != 0) {
+    if (matching_hashtags.size() != 0) {
       LOG(INFO) << "Hashtag has been used before" << std::endl;
-      std::string getValue = from_get_function[0];
+      std::string getValue = matching_hashtags[0];
       tag->ParseFromString(getValue);
     }
   }

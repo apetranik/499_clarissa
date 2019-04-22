@@ -234,16 +234,16 @@ std::vector<chirp::Chirp> ServiceLayerInstance::Stream(
   int64_t microseconds_since_epoch;
   SetTimeStamp(seconds, microseconds_since_epoch);
 
-  auto from_get_function = kvstore->Get("hashtag#" + hashtag);
+  auto matching_hashtags = kvstore->Get("hashtag#" + hashtag);
   std::vector<chirp::Chirp> chirps_to_send;
 
-  if (from_get_function.size() == 0) {
+  if (matching_hashtags.size() == 0) {
     return chirps_to_send;
   }
 
   std::set<std::string> chirpsent; /* Save all the id of chirps was sent */
   chirp::Hashtag tag;
-  tag.ParseFromString(from_get_function[0]);
+  tag.ParseFromString(matching_hashtags[0]);
 
   chirp::StreamReply reply;
 
@@ -254,12 +254,12 @@ std::vector<chirp::Chirp> ServiceLayerInstance::Stream(
   */
   int k = 0;
   while (k < 10) {
-    auto from_get_function = kvstore->Get("hashtag#" + hashtag);
-    if (from_get_function.size() == 0) {
+    auto matching_hashtags = kvstore->Get("hashtag#" + hashtag);
+    if (matching_hashtags.size() == 0) {
       break;
     }
     // Go thru all chirps under hashtag and check if they are new
-    tag.ParseFromString(from_get_function[0]);
+    tag.ParseFromString(matching_hashtags[0]);
     for (int j = 0; j < tag.chirps_size(); j++) {
       if (tag.chirps(j).timestamp().useconds() > microseconds_since_epoch) {
         chirps_to_send.push_back(tag.chirps(j));
@@ -388,10 +388,10 @@ std::string ServiceLayerInstance::ParseChirpForHashtag(const std::string &text,
     std::size_t end = hashtag.find(" "); /* cut off at end of hashtag */
     hashtag = hashtag.substr(0, end);
 
-    std::vector<std::string> from_get_function =
+    std::vector<std::string> matching_hashtags =
         kvstore->Get("hashtag" + hashtag);
-    if (from_get_function.size() != 0) {
-      std::string getValue = from_get_function[0];
+    if (matching_hashtags.size() != 0) {
+      std::string getValue = matching_hashtags[0];
       tag->ParseFromString(getValue);
     }
   }
