@@ -314,14 +314,14 @@ Status ServerForCommandLineClient::stream(
   ClientForKeyValueStore client_key(grpc::CreateChannel(
       "localhost:50000", grpc::InsecureChannelCredentials()));
 
-  auto from_get_function = client_key.get("hashtag#" + request->hashtag());
-  if (from_get_function.size() == 0) {
+  auto matching_hashtags = client_key.get("hashtag#" + request->hashtag());
+  if (matching_hashtags.size() == 0) {
     return Status::CANCELLED;
   }
 
   std::set<std::string> chirpsent; /* Save all the id of chirps was sent */
-  chirp::Chirp chirp;
-  chirp.ParseFromString(from_get_function[0]);
+  chirp::Hashtag hashtag;
+  hashtag.ParseFromString(matching_hashtags[0]);
 
   chirp::StreamReply reply;
   /*
@@ -329,10 +329,25 @@ Status ServerForCommandLineClient::stream(
     sent chirps in a set called chirpsent to disallow sending duplicates. Keep
     looking for new chirps with this while loop.
   */
-  // TODO: Implement continous polling for new chirps from #hashtag
   while (true) {
     if (context->IsCancelled()) {
+      break;
     }
+    auto matching_hashtags = client_key.get("hashtag#" + request->hashtag());
+    if (matching_hashtags.size() == 0) {
+      break;
+    }
+
+    // Go thru all chirps under hashtag and check if they are new
+    hashtag.ParseFromString(matching_hashtags[0]);
+    for (int j = 0; j < hashtag.chirps_size(); j++) {
+      if (hashtag.chirps(j).timestamp().useconds() > microseconds_since_epoch) {
+        chirp::Chirp *message = reply.add_chirps();
+        CopyChirp(message, hashtag.chirps(j));
+      }
+    }
+    writer->Write(reply);
+    reply.clear_chirps();
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   }
   return Status::OK;
@@ -417,35 +432,45 @@ void ServerForCommandLineClient::HandleChirpHashTag(
     std::time_t seconds, int64_t microseconds_since_epoch,
     ClientForKeyValueStore &client_key) {
   /* Check for hashtag in chirp - if so add to KVS as a hashtag chirp */
+  chirp::Hashtag tag;
+  std::string hashtag = ParseChirpForHashtag(text, &tag, client_key);
+  if (hashtag.empty()) return;
+
+  // Add chirp to Hashtag
+  std::string hashtag_chirp;
+  chirp::Chirp *new_message;
+  new_message = tag.add_chirps();
+  new_message->set_username(username);
+  new_message->set_text(text);
+  new_message->set_id(next_chirp_ID);
+  chirp::Timestamp *timestamp = new_message->mutable_timestamp();
+  timestamp->set_seconds(static_cast<int64_t>(seconds));
+  timestamp->set_useconds(microseconds_since_epoch);
+  new_message->set_parent_id(parent_id);
+  new_message->SerializeToString(&hashtag_chirp);
+
+  std::string new_hashtag_chirp;
+  tag.SerializeToString(&new_hashtag_chirp);
+  client_key.put("hashtag" + hashtag, new_hashtag_chirp);
+}
+
+std::string ServerForCommandLineClient::ParseChirpForHashtag(
+    const std::string &text, chirp::Hashtag *tag,
+    ClientForKeyValueStore &client_key) {
+  std::string hashtag = "";
   std::size_t start = text.find(" #");
   if (start != -1) {
-    std::string hashtag = text.substr(start + 1); /* +1 gets rid of space */
+    hashtag = text.substr(start + 1);    /* +1 gets rid of space */
     std::size_t end = hashtag.find(" "); /* cut off at end of hashtag */
     hashtag = hashtag.substr(0, end);
 
-    chirp::Hashtag tag;
-    std::vector<std::string> from_get_function =
+    std::vector<std::string> matching_hashtags =
         client_key.get("hashtag" + hashtag);
-    if (from_get_function.size() != 0) {
+    if (matching_hashtags.size() != 0) {
       LOG(INFO) << "Hashtag has been used before" << std::endl;
-      std::string getValue = from_get_function[0];
-      tag.ParseFromString(getValue);
+      std::string getValue = matching_hashtags[0];
+      tag->ParseFromString(getValue);
     }
-
-    // Add chirp to Hashtag
-    chirp::Chirp *new_message;
-    std::string hashtag_chirp;
-    {
-      new_message = tag.add_chirps();
-      new_message->set_username(username);
-      new_message->set_text(text);
-      new_message->set_id(next_chirp_ID);
-      chirp::Timestamp *timestamp = new_message->mutable_timestamp();
-      timestamp->set_seconds(static_cast<int64_t>(seconds));
-      timestamp->set_useconds(microseconds_since_epoch);
-      new_message->set_parent_id(parent_id);
-      new_message->SerializeToString(&hashtag_chirp);
-    }
-    client_key.put("hashtag" + hashtag, hashtag_chirp);
   }
+  return hashtag;
 }
