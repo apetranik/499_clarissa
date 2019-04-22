@@ -183,5 +183,9 @@ class ServerForCommandLineClient final : public ServiceLayer::Service {
                           const std::string &next_chirp_ID, std::time_t seconds,
                           int64_t microseconds_since_epoch,
                           ClientForKeyValueStore &client_key);
+  /* Finds and parses hashtags from the text of a chirp. returns true if there
+   * is a chirp and fills the Hashtag proto */
+  std::string ParseChirpForHashtag(const std::string &text, chirp::Hashtag *tag,
+                                   ClientForKeyValueStore &client_key);
 };
 #endif /* SERVICE_SERVICE_LAYER_FUNCTIONALITIES_H_ */
