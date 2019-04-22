@@ -230,21 +230,14 @@ std::vector<chirp::Chirp> ServiceLayerInstance::Monitor(
 std::vector<chirp::Chirp> ServiceLayerInstance::Stream(
     const std::string &hashtag) {
   /* Get Current TimeStamp */
-  std::time_t seconds;
-  int64_t microseconds_since_epoch;
-  SetTimeStamp(seconds, microseconds_since_epoch);
-
-  auto matching_hashtags = kvstore->Get("hashtag#" + hashtag);
+  std::time_t seconds = std::time(nullptr);
+  int64_t seconds_since_epoch = static_cast<int64_t>(seconds);
+  int64_t microseconds_since_epoch =
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::system_clock::now().time_since_epoch())
+          .count();
   std::vector<chirp::Chirp> chirps_to_send;
-
-  if (matching_hashtags.size() == 0) {
-    return chirps_to_send;
-  }
-
-  std::set<std::string> chirpsent; /* Save all the id of chirps was sent */
   chirp::Hashtag tag;
-  tag.ParseFromString(matching_hashtags[0]);
-
   chirp::StreamReply reply;
 
   /*
@@ -255,17 +248,17 @@ std::vector<chirp::Chirp> ServiceLayerInstance::Stream(
   int k = 0;
   while (k < 10) {
     auto matching_hashtags = kvstore->Get("hashtag#" + hashtag);
-    if (matching_hashtags.size() == 0) {
-      break;
-    }
-    // Go thru all chirps under hashtag and check if they are new
-    tag.ParseFromString(matching_hashtags[0]);
-    for (int j = 0; j < tag.chirps_size(); j++) {
-      if (tag.chirps(j).timestamp().useconds() > microseconds_since_epoch) {
-        chirps_to_send.push_back(tag.chirps(j));
+    if (matching_hashtags.size() > 0) {
+      // Go thru all chirps under hashtag and check if they are new
+      tag.ParseFromString(matching_hashtags[0]);
+      for (int j = 0; j < tag.chirps_size(); j++) {
+        if (tag.chirps(j).timestamp().useconds() > microseconds_since_epoch) {
+          chirps_to_send.push_back(tag.chirps(j));
+        }
       }
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    k++;
   }
   return chirps_to_send;
 }
@@ -358,7 +351,6 @@ void ServiceLayerInstance::HandleChirpHashTag(
   chirp::Hashtag tag;
   std::size_t start = text.find(" #");
   std::string hashtag = ParseChirpForHashtag(text, &tag);
-  if (hashtag.empty()) return;
 
   // Add chirp to Hashtag
   std::string hashtag_chirp;

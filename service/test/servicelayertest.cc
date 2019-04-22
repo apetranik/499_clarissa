@@ -238,19 +238,74 @@ TEST(ChirpTest, BasicChirpWithHashtag) {
   EXPECT_EQ(user_.username(), "user1");
 
   chirp::ChirpReply *chirp_reply;
-  s_layer.Chirp("user1", "testing this chirp #test ", "");
+  s_layer.Chirp("user1", "testing this chirp #test hello!", "");
 
   auto from_get = kvstore.Get("chirp1");
   chirp::Chirp chirp_ = s_layer.ConvertToChirp(from_get[0]);
   EXPECT_EQ(chirp_.username(), "user1");
-  EXPECT_EQ(chirp_.text(), "testing this chirp #test ");
+  EXPECT_EQ(chirp_.text(), "testing this chirp #test hello!");
 
   auto hashtag_object = kvstore.Get("hashtag#test");
   std::vector<chirp::Chirp> chirps =
       s_layer.ConvertToHashtag(hashtag_object[0]);
 
   EXPECT_EQ(chirps.size(), 1);
-  EXPECT_EQ(chirps[0].text(), "testing this chirp #test ");
+  EXPECT_EQ(chirps[0].text(), "testing this chirp #test hello!");
+}
+/*
+  User trying to chirp with hashtag where hashtag is last thing in string
+*/
+TEST(ChirpTest, VariationofBasicChirpWithHashtag) {
+  KeyValueStoreInstance kvstore;
+  ServiceLayerInstance s_layer(&kvstore);
+  s_layer.RegisterUser("user1");
+
+  auto uservalue = kvstore.Get("user1");
+  chirp::User user_ = s_layer.StringToUser(uservalue[0]);
+  EXPECT_EQ(user_.username(), "user1");
+
+  chirp::ChirpReply *chirp_reply;
+  s_layer.Chirp("user1", "testing this chirp #test", "");
+
+  auto from_get = kvstore.Get("chirp1");
+  chirp::Chirp chirp_ = s_layer.ConvertToChirp(from_get[0]);
+  EXPECT_EQ(chirp_.username(), "user1");
+  EXPECT_EQ(chirp_.text(), "testing this chirp #test");
+
+  auto hashtag_object = kvstore.Get("hashtag#test");
+  std::vector<chirp::Chirp> chirps =
+      s_layer.ConvertToHashtag(hashtag_object[0]);
+
+  EXPECT_EQ(chirps.size(), 1);
+  EXPECT_EQ(chirps[0].text(), "testing this chirp #test");
+}
+
+/*
+  User trying to chirp with hashtag where hashtag has extra whitepsace
+*/
+TEST(ChirpTest, BasicChirpWithHashtagandWhitespace) {
+  KeyValueStoreInstance kvstore;
+  ServiceLayerInstance s_layer(&kvstore);
+  s_layer.RegisterUser("user1");
+
+  auto uservalue = kvstore.Get("user1");
+  chirp::User user_ = s_layer.StringToUser(uservalue[0]);
+  EXPECT_EQ(user_.username(), "user1");
+
+  chirp::ChirpReply *chirp_reply;
+  s_layer.Chirp("user1", "testing this chirp     #test        ", "");
+
+  auto from_get = kvstore.Get("chirp1");
+  chirp::Chirp chirp_ = s_layer.ConvertToChirp(from_get[0]);
+  EXPECT_EQ(chirp_.username(), "user1");
+  EXPECT_EQ(chirp_.text(), "testing this chirp     #test        ");
+
+  auto hashtag_object = kvstore.Get("hashtag#test");
+  std::vector<chirp::Chirp> chirps =
+      s_layer.ConvertToHashtag(hashtag_object[0]);
+
+  EXPECT_EQ(chirps.size(), 1);
+  EXPECT_EQ(chirps[0].text(), "testing this chirp     #test        ");
 }
 /*
   User can read a chirp thread (Multiple chirps in one thread)
@@ -362,6 +417,20 @@ void RunMonitorAutomaticChirpGenerator(KeyValueStoreInstance *kv,
   }
 }
 /*
+  Helper Function for Streaming Function
+*/
+void RunStreamAutomaticChirpGenerator(KeyValueStoreInstance *kv,
+                                      const std::string &user,
+                                      const std::string &chirp_hashtag,
+                                      int num_chirps) {
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  ServiceLayerInstance s_layer(kv);
+  for (int i = 0; i < num_chirps; i++) {
+    s_layer.Chirp(user, chirp_hashtag, "");
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+}
+/*
   Monitor test: create another thread that acts as a user chirping.
 */
 TEST(MonitorTest, SimpleTest) {
@@ -395,16 +464,125 @@ TEST(MonitorTest, MultipleUsersTest) {
 }
 
 /*
-  Stream test: not implemented enough to finish test yet
+  Basic stream test - 2 users, same chirp
 */
-TEST(StreamTest, SimpleTest) {
+TEST(StreamTest, BasicTest) {
   KeyValueStoreInstance *kvstore = new KeyValueStoreInstance;
   ServiceLayerInstance s_layer(kvstore);
   s_layer.RegisterUser("user1");
   s_layer.RegisterUser("user2");
-  s_layer.Chirp("user1", " #test hello", "");
-  auto recieved_stream_chirp = s_layer.Stream("#test");
-  // EXPECT_NE(0, recieved_stream_chirp.size());
+  std::thread second(RunStreamAutomaticChirpGenerator, kvstore, "user2",
+                     " #test hello", 10);
+  auto recieved_stream_chirp = s_layer.Stream("test");
+  second.join();
+  EXPECT_NE(recieved_stream_chirp.size(), 0);
+  EXPECT_EQ(recieved_stream_chirp[0].text(), " #test hello");
+}
+/*
+  Stream test: Streaming chirps being sent with diff text but  hashtag
+*/
+TEST(StreamTest, MultipleChirpsSameHashtag) {
+  KeyValueStoreInstance *kvstore = new KeyValueStoreInstance;
+  ServiceLayerInstance s_layer(kvstore);
+  s_layer.RegisterUser("user1");
+  s_layer.RegisterUser("user2");
+  s_layer.RegisterUser("user3");
+  std::thread second(RunStreamAutomaticChirpGenerator, kvstore, "user2",
+                     " #test test1", 1);
+  std::thread third(RunStreamAutomaticChirpGenerator, kvstore, "user3",
+                    " #test test2", 1);
+
+  auto recieved_stream_chirp = s_layer.Stream("test");
+  second.join();
+  third.join();
+  // because of the multiple threads we can't be sure everytime which one will
+  // be chirped first, so we test for both but it should only ever be one of
+  // those 2 options
+
+  EXPECT_NE(recieved_stream_chirp.size(), 0);
+  EXPECT_TRUE((recieved_stream_chirp[0].text() == " #test test2") ||
+              (recieved_stream_chirp[0].text() == " #test test1"));
+  EXPECT_TRUE((recieved_stream_chirp[0].text() == " #test test2") ||
+              (recieved_stream_chirp[0].text() == " #test test1"));
+}
+
+/*
+ testing stream w/ superstring of desired hashtag - should NOT work
+*/
+TEST(StreamTest, SuperStringTest) {
+  KeyValueStoreInstance *kvstore = new KeyValueStoreInstance;
+  ServiceLayerInstance s_layer(kvstore);
+  s_layer.RegisterUser("user1");
+  s_layer.RegisterUser("user2");
+  std::thread second(RunStreamAutomaticChirpGenerator, kvstore, "user2",
+                     " #testhello", 10);
+  auto recieved_stream_chirp = s_layer.Stream("test");
+  second.join();
+  EXPECT_EQ(recieved_stream_chirp.size(), 0);
+}
+
+/*
+  Streaming where hashtag is the end of the chirp text w/ no whitespace after
+*/
+TEST(StreamTest, HashtagEndsChirp) {
+  KeyValueStoreInstance *kvstore = new KeyValueStoreInstance;
+  ServiceLayerInstance s_layer(kvstore);
+  s_layer.RegisterUser("user1");
+  s_layer.RegisterUser("user2");
+  std::thread second(RunStreamAutomaticChirpGenerator, kvstore, "user2",
+                     "hello #test", 10);
+  auto recieved_stream_chirp = s_layer.Stream("test");
+  second.join();
+  EXPECT_NE(recieved_stream_chirp.size(), 0);
+  EXPECT_EQ(recieved_stream_chirp[0].text(), "hello #test");
+}
+
+/*
+  Streaming where the hashtag text is the entire chirp
+*/
+TEST(StreamTest, HashtagOnlyChirp) {
+  KeyValueStoreInstance *kvstore = new KeyValueStoreInstance;
+  ServiceLayerInstance s_layer(kvstore);
+  s_layer.RegisterUser("user1");
+  s_layer.RegisterUser("user2");
+  std::thread second(RunStreamAutomaticChirpGenerator, kvstore, "user2",
+                     " #test", 10);
+  auto recieved_stream_chirp = s_layer.Stream("test");
+  second.join();
+  EXPECT_NE(recieved_stream_chirp.size(), 0);
+  EXPECT_EQ(recieved_stream_chirp[0].text(), " #test");
+}
+
+/*
+  Streaming where the entire chirp is '#' - should fail
+*/
+TEST(StreamTest, PoundSignOnlyChirp) {
+  KeyValueStoreInstance *kvstore = new KeyValueStoreInstance;
+  ServiceLayerInstance s_layer(kvstore);
+  s_layer.RegisterUser("user1");
+  s_layer.RegisterUser("user2");
+  std::thread second(RunStreamAutomaticChirpGenerator, kvstore, "user2", "#",
+                     10);
+  auto recieved_stream_chirp = s_layer.Stream("test");
+  second.join();
+  EXPECT_EQ(recieved_stream_chirp.size(), 0);
+}
+/*
+  Streaming where there are multiple hashtags in a chirp.
+  My implementation should search for everything after the first hashtag up
+  until a space or end of chirp
+*/
+TEST(StreamTest, MultiHashtagChirp) {
+  KeyValueStoreInstance *kvstore = new KeyValueStoreInstance;
+  ServiceLayerInstance s_layer(kvstore);
+  s_layer.RegisterUser("user1");
+  s_layer.RegisterUser("user2");
+  std::thread second(RunStreamAutomaticChirpGenerator, kvstore, "user2",
+                     " #test#hello", 10);
+  auto recieved_stream_chirp = s_layer.Stream("test#hello");
+  second.join();
+  EXPECT_NE(recieved_stream_chirp.size(), 0);
+  EXPECT_EQ(recieved_stream_chirp[0].text(), " #test#hello");
 }
 
 int main(int argc, char **argv) {

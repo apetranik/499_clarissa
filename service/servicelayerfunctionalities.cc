@@ -314,15 +314,7 @@ Status ServerForCommandLineClient::stream(
   ClientForKeyValueStore client_key(grpc::CreateChannel(
       "localhost:50000", grpc::InsecureChannelCredentials()));
 
-  auto matching_hashtags = client_key.get("hashtag#" + request->hashtag());
-  if (matching_hashtags.size() == 0) {
-    return Status::CANCELLED;
-  }
-
-  std::set<std::string> chirpsent; /* Save all the id of chirps was sent */
   chirp::Hashtag hashtag;
-  hashtag.ParseFromString(matching_hashtags[0]);
-
   chirp::StreamReply reply;
   /*
     Continuously look through in db for #. Keep all
@@ -335,7 +327,7 @@ Status ServerForCommandLineClient::stream(
     }
     auto matching_hashtags = client_key.get("hashtag#" + request->hashtag());
     if (matching_hashtags.size() == 0) {
-      break;
+      continue;
     }
 
     // Go thru all chirps under hashtag and check if they are new
@@ -347,7 +339,12 @@ Status ServerForCommandLineClient::stream(
       }
     }
     writer->Write(reply);
+    // Clear old chirps
     reply.clear_chirps();
+    hashtag.clear_chirps();
+    std::string cleaned_chirp;
+    hashtag.SerializeToString(&cleaned_chirp);
+    client_key.put("hashtag#" + request->hashtag(), cleaned_chirp);
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   }
   return Status::OK;
@@ -434,8 +431,8 @@ void ServerForCommandLineClient::HandleChirpHashTag(
   /* Check for hashtag in chirp - if so add to KVS as a hashtag chirp */
   chirp::Hashtag tag;
   std::string hashtag = ParseChirpForHashtag(text, &tag, client_key);
-  if (hashtag.empty()) return;
-
+  std::cout << "RETRIEVED OLD CHIRP FROM BACKEND WITH hashtag: " << hashtag
+            << "." << std::endl;
   // Add chirp to Hashtag
   std::string hashtag_chirp;
   chirp::Chirp *new_message;
@@ -447,11 +444,9 @@ void ServerForCommandLineClient::HandleChirpHashTag(
   timestamp->set_seconds(static_cast<int64_t>(seconds));
   timestamp->set_useconds(microseconds_since_epoch);
   new_message->set_parent_id(parent_id);
-  new_message->SerializeToString(&hashtag_chirp);
 
-  std::string new_hashtag_chirp;
-  tag.SerializeToString(&new_hashtag_chirp);
-  client_key.put("hashtag" + hashtag, new_hashtag_chirp);
+  tag.SerializeToString(&hashtag_chirp);
+  client_key.put("hashtag" + hashtag, hashtag_chirp);
 }
 
 std::string ServerForCommandLineClient::ParseChirpForHashtag(
