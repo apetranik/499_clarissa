@@ -1,5 +1,8 @@
 #ifndef COMMANDLINE_CLIENTFUNCTIONALITIES_H_
 #define COMMANDLINE_CLIENTFUNCTIONALITIES_H_
+
+#define LOG_DIR "../logs/"
+
 #include <chrono>
 #include <ctime>
 #include <iostream>
@@ -9,6 +12,7 @@
 #include <string>
 #include <thread>
 
+#include <glog/logging.h>
 #include <grpcpp/client_context.h>
 #include <grpcpp/grpcpp.h>
 #include "../chirp.grpc.pb.h"

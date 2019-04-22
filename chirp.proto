@@ -114,6 +114,9 @@ message ChirpReplies {
   repeated Chirp chirps = 2; //All of chirps replies as value in map.
 }
 
+message Hashtag {
+  repeated Chirp chirps = 1;
+}
 service KeyValueStore {
   rpc put (PutRequest) returns (PutReply) {}
   rpc get (stream GetRequest) returns (stream GetReply) {}

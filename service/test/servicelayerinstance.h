@@ -44,10 +44,15 @@ class ServiceLayerInstance {
   */
   chirp::Chirp ConvertToChirp(std::string byte);
   /*
+  Converts serialized string to vector of chirp::Hashtag
+  */
+  std::vector<chirp::Chirp> ConvertToHashtag(const std::string byte);
+  /*
   Converts serialized string to chirp::ChirpReplies (which is a list of
   replies to the same chirp<ID>)
   */
   chirp::ChirpReplies ConvertToChirpReplies(std::string byte);
+
   /*
     Copy chirps, "chirp_" is an empty chirp, and "reply_" is copying into
     "chirp"
@@ -80,5 +85,14 @@ class ServiceLayerInstance {
     Helper Function to get next chirp id.
   */
   std::string GetNextChirpID();
+
+  /*
+   Helper function for chirp() to handle potential hashtags in a chirp and add
+   them to the KVS
+ */
+  void HandleChirpHashTag(const std::string &username, const std::string &text,
+                          const std::string &parent_id,
+                          const std::string &next_chirp_ID, std::time_t seconds,
+                          int64_t microseconds_since_epoch);
 };
 #endif /* SERVICE_TEST_SERVICELAYERINSTANCE_H*/

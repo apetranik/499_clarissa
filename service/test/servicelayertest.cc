@@ -226,6 +226,32 @@ TEST(ChirpTest, ReplyDoesntExistTest) {
   EXPECT_EQ(response, false);
 }
 /*
+  User trying to chirp with hashtag
+*/
+TEST(ChirpTest, BasicChirpWithHashtag) {
+  KeyValueStoreInstance kvstore;
+  ServiceLayerInstance s_layer(&kvstore);
+  s_layer.RegisterUser("user1");
+
+  auto uservalue = kvstore.Get("user1");
+  chirp::User user_ = s_layer.StringToUser(uservalue[0]);
+  EXPECT_EQ(user_.username(), "user1");
+
+  chirp::ChirpReply *chirp_reply;
+  s_layer.Chirp("user1", "testing this chirp #test ", "");
+
+  auto from_get = kvstore.Get("chirp1");
+  chirp::Chirp chirp_ = s_layer.ConvertToChirp(from_get[0]);
+  EXPECT_EQ(chirp_.username(), "user1");
+  EXPECT_EQ(chirp_.text(), "testing this chirp #test");
+
+  auto hashtag_object = kvstore.Get("hashtag#test");
+  std::vector<chirp::Chirp> chirps = s_layer.ConvertToHashtag(from_get[0]);
+
+  EXPECT_EQ(chirps.size(), 1);
+  EXPECT_EQ(chirps[0].text(), "testing this chirp #test");
+}
+/*
   User can read a chirp thread (Multiple chirps in one thread)
 */
 TEST(ReadTest, SimpleTest) {

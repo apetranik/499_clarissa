@@ -23,6 +23,7 @@ DEFINE_validator(user, &ValidateUser);
 DEFINE_validator(reply, &ValidateReply);
 
 int main(int argc, char **argv) {
+  google::InitGoogleLogging(argv[0]);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   ClientFunctionalities client(grpc::CreateChannel(
