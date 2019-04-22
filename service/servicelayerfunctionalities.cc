@@ -431,8 +431,6 @@ void ServerForCommandLineClient::HandleChirpHashTag(
   /* Check for hashtag in chirp - if so add to KVS as a hashtag chirp */
   chirp::Hashtag tag;
   std::string hashtag = ParseChirpForHashtag(text, &tag, client_key);
-  std::cout << "RETRIEVED OLD CHIRP FROM BACKEND WITH hashtag: " << hashtag
-            << "." << std::endl;
   // Add chirp to Hashtag
   std::string hashtag_chirp;
   chirp::Chirp *new_message;
