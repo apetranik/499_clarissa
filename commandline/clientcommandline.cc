@@ -51,7 +51,7 @@ int main(int argc, char **argv) {
       client.monitor(FLAGS_user);
     }
     if (FLAGS_stream != "") {
-      client.stream(FLAGS_stream);
+      client.stream(FLAGS_user, FLAGS_stream);
     }
   } else {
     std::cout << "Syntax Error. Please try again." << std::endl;

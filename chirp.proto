@@ -85,7 +85,8 @@ message MonitorReply {
 }
 
 message StreamRequest {
-  string hashtag = 1;
+  string username = 1;
+  string hashtag = 2;
 }
 message StreamReply{
   repeated Chirp chirps = 1;

@@ -33,7 +33,8 @@ class ServiceLayerInstance {
    * followers */
   std::vector<chirp::Chirp> Monitor(const std::string &username);
   /* Stream takes in a hashtag and displays realtime chirps with that hashtag */
-  std::vector<chirp::Chirp> Stream(const std::string &hastag);
+  std::vector<chirp::Chirp> Stream(const std::string &username,
+                                   const std::string &hastag);
   /*
   The functions below are helper functions to serialize and parse objects
   this is made public so it can be tested in servicelayertest.cc
@@ -96,7 +97,7 @@ class ServiceLayerInstance {
                           int64_t microseconds_since_epoch);
   /* Finds and parses hashtags from the text of a chirp. returns true if there
    * is a chirp and fills the Hashtag proto */
-  std::string ParseChirpForHashtag(const std::string &text,
-                                   chirp::Hashtag *tag);
+  std::vector<std::string> ParseChirpForHashtag(
+      const std::string &text, std::vector<chirp::Hashtag> *tags);
 };
 #endif /* SERVICE_TEST_SERVICELAYERINSTANCE_H*/
