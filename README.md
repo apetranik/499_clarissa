@@ -41,7 +41,7 @@ Run ./clientcommandline
     	$ sudo apt-get install libgflags-dev libgtest-dev
     	$ sudo apt-get update
     	$ sudo apt-get install clang libc++-dev
-    		$ sudo apt-get -y install make cmake
+    	$ sudo apt-get -y install make cmake
 
     	$ sudo apt-get install pkg-config
 
