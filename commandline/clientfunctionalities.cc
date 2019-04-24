@@ -103,9 +103,12 @@ void ClientFunctionalities::monitor(const std::string &username) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
   }
 }
-void ClientFunctionalities::stream(const std::string &hashtag) {
+void ClientFunctionalities::stream(const std::string &username,
+                                   const std::string &hashtag) {
   chirp::StreamRequest request;
   request.set_hashtag(hashtag);
+  request.set_username(username);
+
   chirp::StreamReply reply;
   ClientContext context;
   std::unique_ptr<grpc::ClientReader<chirp::StreamReply>> reader(

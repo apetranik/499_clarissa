@@ -70,7 +70,7 @@ class ClientFunctionalities {
   /*
     Streams all new chirps containing ‘hashtag’
   */
-  void stream(const std::string &hashtag);
+  void stream(const std::string &username, const std::string &hashtag);
 
  private:
   /*

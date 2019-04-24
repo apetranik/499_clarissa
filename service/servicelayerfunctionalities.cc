@@ -306,13 +306,20 @@ Status ServerForCommandLineClient::monitor(
 Status ServerForCommandLineClient::stream(
     ServerContext *context, const StreamRequest *request,
     ::grpc::ServerWriter<::chirp::StreamReply> *writer) {
+  ClientForKeyValueStore client_key(grpc::CreateChannel(
+      "localhost:50000", grpc::InsecureChannelCredentials()));
+
+  /* Check user exists */
+  chirp::User user;
+  std::vector<std::string> from_get_function =
+      client_key.get(request->username());
+  if (from_get_function.size() == 0) {
+    return Status::CANCELLED;
+  }
   /* Get Current TimeStamp */
   std::time_t seconds;
   int64_t microseconds_since_epoch;
   SetTimeStamp(seconds, microseconds_since_epoch);
-
-  ClientForKeyValueStore client_key(grpc::CreateChannel(
-      "localhost:50000", grpc::InsecureChannelCredentials()));
 
   chirp::Hashtag hashtag;
   chirp::StreamReply reply;
@@ -329,23 +336,28 @@ Status ServerForCommandLineClient::stream(
     if (matching_hashtags.size() == 0) {
       continue;
     }
-
-    // Go thru all chirps under hashtag and check if they are new
     hashtag.ParseFromString(matching_hashtags[0]);
-    for (int j = 0; j < hashtag.chirps_size(); j++) {
-      if (hashtag.chirps(j).timestamp().useconds() > microseconds_since_epoch) {
-        chirp::Chirp *message = reply.add_chirps();
-        CopyChirp(message, hashtag.chirps(j));
+    if (hashtag.chirps_size() > 0) {
+      /* Go thru all chirps under hashtag and check if they are new */
+      for (int j = 0; j < hashtag.chirps_size(); j++) {
+        if (hashtag.chirps(j).timestamp().useconds() >
+            microseconds_since_epoch) {
+          chirp::Chirp *message = reply.add_chirps();
+          CopyChirp(message, hashtag.chirps(j));
+          writer->Write(reply);
+        }
       }
+      /* don't delete chirps immediately so other streaming
+       * threads can capture it */
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+      reply.clear_chirps();
+      hashtag.clear_chirps();
+      std::string cleaned_chirp;
+      hashtag.SerializeToString(&cleaned_chirp);
+      client_key.put("hashtag#" + request->hashtag(), cleaned_chirp);
+    } else {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
-    writer->Write(reply);
-    // Clear old chirps
-    reply.clear_chirps();
-    hashtag.clear_chirps();
-    std::string cleaned_chirp;
-    hashtag.SerializeToString(&cleaned_chirp);
-    client_key.put("hashtag#" + request->hashtag(), cleaned_chirp);
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   }
   return Status::OK;
 }
@@ -429,41 +441,56 @@ void ServerForCommandLineClient::HandleChirpHashTag(
     std::time_t seconds, int64_t microseconds_since_epoch,
     ClientForKeyValueStore &client_key) {
   /* Check for hashtag in chirp - if so add to KVS as a hashtag chirp */
-  chirp::Hashtag tag;
-  std::string hashtag = ParseChirpForHashtag(text, &tag, client_key);
-  // Add chirp to Hashtag
-  std::string hashtag_chirp;
-  chirp::Chirp *new_message;
-  new_message = tag.add_chirps();
-  new_message->set_username(username);
-  new_message->set_text(text);
-  new_message->set_id(next_chirp_ID);
-  chirp::Timestamp *timestamp = new_message->mutable_timestamp();
-  timestamp->set_seconds(static_cast<int64_t>(seconds));
-  timestamp->set_useconds(microseconds_since_epoch);
-  new_message->set_parent_id(parent_id);
-
-  tag.SerializeToString(&hashtag_chirp);
-  client_key.put("hashtag" + hashtag, hashtag_chirp);
+  std::vector<chirp::Hashtag> tags;
+  std::vector<std::string> hashtags =
+      ParseChirpForHashtag(text, &tags, client_key);
+  // Add chirp to each Hashtag
+  for (int i = 0; i < hashtags.size(); ++i) {
+    chirp::Hashtag tag = tags[i];
+    std::string hashtag_chirp;
+    chirp::Chirp *new_message;
+    new_message = tag.add_chirps();
+    new_message->set_username(username);
+    new_message->set_text(text);
+    new_message->set_id(next_chirp_ID);
+    chirp::Timestamp *timestamp = new_message->mutable_timestamp();
+    timestamp->set_seconds(static_cast<int64_t>(seconds));
+    timestamp->set_useconds(microseconds_since_epoch);
+    new_message->set_parent_id(parent_id);
+    tag.SerializeToString(&hashtag_chirp);
+    client_key.put("hashtag" + hashtags[i], hashtag_chirp);
+  }
 }
 
-std::string ServerForCommandLineClient::ParseChirpForHashtag(
-    const std::string &text, chirp::Hashtag *tag,
+std::vector<std::string> ServerForCommandLineClient::ParseChirpForHashtag(
+    const std::string &text, std::vector<chirp::Hashtag> *tags,
     ClientForKeyValueStore &client_key) {
+  std::string textcopy = text;
+  std::vector<std::string> hashtags;
   std::string hashtag = "";
-  std::size_t start = text.find(" #");
-  if (start != -1) {
-    hashtag = text.substr(start + 1);    /* +1 gets rid of space */
+  while (textcopy.find("#") != -1) {
+    std::size_t start = textcopy.find("#");
+    hashtag = textcopy.substr(start);
     std::size_t end = hashtag.find(" "); /* cut off at end of hashtag */
-    hashtag = hashtag.substr(0, end);
+    if (end != -1) {
+      hashtag = hashtag.substr(0, end);
+      textcopy =
+          textcopy.substr(start + end); /* remove found hashtag from text */
+    } else {
+      textcopy = ""; /* at end of chirp */
+    }
 
     std::vector<std::string> matching_hashtags =
         client_key.get("hashtag" + hashtag);
+    chirp::Hashtag tag;
     if (matching_hashtags.size() != 0) {
       LOG(INFO) << "Hashtag has been used before" << std::endl;
       std::string getValue = matching_hashtags[0];
-      tag->ParseFromString(getValue);
+
+      tag.ParseFromString(getValue);
     }
+    tags->push_back(tag);
+    hashtags.push_back(hashtag);
   }
-  return hashtag;
+  return hashtags;
 }
