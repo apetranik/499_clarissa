@@ -3,6 +3,7 @@
 
 #define STRIP_FLAG_HELP 1
 #include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include "clientfunctionalities.h"
 
@@ -33,7 +34,7 @@ int main(int argc, char **argv) {
     client.registeruser(FLAGS_register);
   } else if (FLAGS_user != "") {
     if (FLAGS_chirp == "" && FLAGS_reply == "" && FLAGS_follow == "" &&
-        FLAGS_read == "" && !FLAGS_monitor) {
+        FLAGS_read == "" && FLAGS_stream == "" && !FLAGS_monitor) {
       std::cout << "No Commands. Try Again." << std::endl;
     } else if (FLAGS_chirp != "" && FLAGS_reply == "") {
       client.chirp(FLAGS_user, FLAGS_chirp, "");
